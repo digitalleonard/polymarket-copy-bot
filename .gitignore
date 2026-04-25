@@ -1,0 +1,8 @@
+trades.json
+.seen_ids.json
+.bot.pid
+*.log
+__pycache__/
+*.pyc
+.env
+.DS_Store

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bullpen tracker copy list *)",
+      "Bash(bullpen tracker copy executions *)",
+      "Bash(bullpen tracker copy resume *)",
+      "Bash(bullpen portfolio balances *)",
+      "Bash(bullpen portfolio pnl *)",
+      "Bash(bullpen polymarket positions *)",
+      "Bash(bullpen polymarket activity *)",
+      "Bash(bullpen polymarket data leaderboard *)",
+      "Bash(bullpen --version *)",
+      "Bash(launchctl list *)",
+      "Bash(launchctl list)",
+      "Bash(curl http://localhost:5050*)",
+      "Bash(pgrep -fl *)"
+    ]
+  }
+}
