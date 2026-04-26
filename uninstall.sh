@@ -11,10 +11,12 @@ read -p "Are you sure? (y/N) " confirm
 echo "Stopping services..."
 launchctl unload ~/Library/LaunchAgents/fi.bullpen.bot2.plist 2>/dev/null && echo "✅ Bot stopped"
 launchctl unload ~/Library/LaunchAgents/fi.bullpen.dashboard.plist 2>/dev/null && echo "✅ Dashboard stopped"
+launchctl unload ~/Library/LaunchAgents/fi.bullpen.rotate.plist 2>/dev/null && echo "✅ Auto-rotate stopped"
 
 echo "Removing LaunchAgent plists..."
 rm -f ~/Library/LaunchAgents/fi.bullpen.bot2.plist
 rm -f ~/Library/LaunchAgents/fi.bullpen.dashboard.plist
+rm -f ~/Library/LaunchAgents/fi.bullpen.rotate.plist
 
 echo "Removing symlink..."
 rm -f ~/polymarket-bot

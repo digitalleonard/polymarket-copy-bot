@@ -30,6 +30,8 @@ BOT_LOG="/tmp/bot2.log"
 DASHBOARD_LOG="/tmp/dashboard.log"
 BOT_PLIST="$HOME/Library/LaunchAgents/fi.bullpen.bot2.plist"
 DASHBOARD_PLIST="$HOME/Library/LaunchAgents/fi.bullpen.dashboard.plist"
+ROTATE_PLIST="$HOME/Library/LaunchAgents/fi.bullpen.rotate.plist"
+ROTATE_LOG="/tmp/rotate.log"
 
 log "Install directory: $INSTALL_DIR"
 
@@ -169,15 +171,57 @@ cat > "$DASHBOARD_PLIST" <<PLIST
 </plist>
 PLIST
 
+cat > "$ROTATE_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>fi.bullpen.rotate</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>${PYTHON_BIN}</string>
+    <string>${SYMLINK}/rotate_traders.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>${SYMLINK}</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>${HOME}</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>172800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>${ROTATE_LOG}</string>
+
+  <key>StandardErrorPath</key>
+  <string>${ROTATE_LOG}</string>
+</dict>
+</plist>
+PLIST
+
 ok "LaunchAgent plists written"
 
 # ── Load LaunchAgents ─────────────────────────────────────────
-log "Loading LaunchAgents (bot + dashboard)..."
+log "Loading LaunchAgents (bot + dashboard + auto-rotate)..."
 launchctl unload "$BOT_PLIST" 2>/dev/null || true
 launchctl unload "$DASHBOARD_PLIST" 2>/dev/null || true
+launchctl unload "$ROTATE_PLIST" 2>/dev/null || true
 sleep 1
 launchctl load "$BOT_PLIST"
 launchctl load "$DASHBOARD_PLIST"
+launchctl load "$ROTATE_PLIST"
 sleep 3
 
 BOT_PID=$(launchctl list fi.bullpen.bot2 2>/dev/null | grep '"PID"' | awk '{print $3}' | tr -d ';')
@@ -185,6 +229,7 @@ DASH_PID=$(launchctl list fi.bullpen.dashboard 2>/dev/null | grep '"PID"' | awk 
 
 [[ -n "$BOT_PID" ]]  && ok "Bot running (PID $BOT_PID)"  || warn "Bot did not start — check: tail -20 $BOT_LOG"
 [[ -n "$DASH_PID" ]] && ok "Dashboard running (PID $DASH_PID)" || warn "Dashboard did not start — check: tail -20 $DASHBOARD_LOG"
+ok "Auto-rotate scheduled (every 2 days) — first scan in 48h"
 
 # ── Bullpen login & skill install ────────────────────────────
 echo ""

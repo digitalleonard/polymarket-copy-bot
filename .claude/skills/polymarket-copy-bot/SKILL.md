@@ -20,11 +20,14 @@ An automated Polymarket copy trading system. Monitors 10 elite traders, copies t
 | **Bot** | `bot.py` — polls every 30s, logs trades, auto-redeems, auto-resumes |
 | **Dashboard** | `dashboard.py` (Flask) — http://localhost:5050 |
 | **Frontend** | `templates/index.html` — dark mode, Chart.js, period filters |
+| **Auto-rotate** | `rotate_traders.py` — runs every 48h, removes underperformers, adds best from leaderboard |
 | **Bot log** | `/tmp/bot2.log` |
 | **Dashboard log** | `/tmp/dashboard.log` |
+| **Rotate log** | `/tmp/rotate.log` |
 | **Trade log** | `trades.json` |
 | **Bot LaunchAgent** | `fi.bullpen.bot2` |
 | **Dashboard LaunchAgent** | `fi.bullpen.dashboard` |
+| **Rotate LaunchAgent** | `fi.bullpen.rotate` (StartInterval: 172800s) |
 
 ## Checking Status
 
@@ -119,6 +122,40 @@ bullpen tracker copy delete <ADDRESS> --yes
 - **Realized P&L**: computed from `bullpen polymarket activity --type redeem` (redemption payouts minus cost basis)
 - **Unrealized P&L**: live from `bullpen polymarket positions`
 - **`bullpen portfolio pnl` returns $0** — known Bullpen API bug, do not use
+
+## Trader Auto-Rotation (Every 48 Hours)
+
+`rotate_traders.py` runs automatically via `fi.bullpen.rotate` LaunchAgent.
+
+**What it does:**
+1. Reads `trades.json` → computes per-trader win rate (completed / non-skipped)
+2. Flags traders with < 25% win rate AND ≥ 20 judged signals as underperformers
+3. Fetches weekly leaderboard → finds candidates with pnl/volume > 1.5x efficiency
+4. Vets candidates: rejects those with median trade size > $5k or avg price < 10%
+5. Removes underperformers, adds vetted replacements (up to 12 total)
+
+**Check last rotation:**
+```bash
+cat /tmp/rotate.log
+```
+
+**Run a manual rotation scan now:**
+```bash
+python3 ~/polymarket-bot/rotate_traders.py
+```
+
+**Restart the rotate scheduler:**
+```bash
+launchctl unload ~/Library/LaunchAgents/fi.bullpen.rotate.plist
+launchctl load ~/Library/LaunchAgents/fi.bullpen.rotate.plist
+```
+
+**Thresholds** (edit `rotate_traders.py` to adjust):
+- `MIN_SIGNALS_TO_JUDGE = 20` — min signals before judging a trader
+- `UNDERPERFORM_WIN_RATE = 0.25` — below 25% = underperformer
+- `MIN_EFFICIENCY = 1.5` — require 1.5x pnl/volume from leaderboard
+- `MAX_TRADE_SIZE = 5000` — reject traders betting > $5k each
+- `MAX_ROSTER_SIZE = 12` — never subscribe to more than 12 traders
 
 ## Upgrading Bullpen
 ```bash
