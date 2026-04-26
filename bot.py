@@ -22,6 +22,10 @@ POSITIONS_TIMEOUT      = 45   # seconds before giving up on positions call
 POSITIONS_RETRIES      = 2    # extra retries on timeout
 REDEEM_TIMEOUT         = 60   # seconds for the redeem command (can be slow)
 
+# ── Auth monitoring ───────────────────────────────────────────────────────────
+AUTH_NOTIFY_COOLDOWN   = 3600  # only send one notification per hour (avoid spam)
+_last_auth_notify_at   = 0     # epoch seconds of last notification sent
+
 # ── Tracked traders (for reference / future dashboard use) ───────────────────
 TRADERS = {
     "0xc2e7800b5af46e6093872b177b7a5e7f0563be51": "beachboy4",
@@ -43,6 +47,76 @@ def now_utc():
 
 def log(msg: str):
     print(f"[{now_utc()}] {msg}", flush=True)
+
+def is_auth_error(text: str) -> bool:
+    """Returns True if the output text indicates an expired/corrupted session."""
+    auth_phrases = [
+        "failed to decrypt",
+        "not logged in",
+        "re-authenticate",
+        "run `bullpen login`",
+        "credentials",
+        "token",
+        "unauthorized",
+        "401",
+    ]
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in auth_phrases)
+
+
+def notify_auth_expired():
+    """Send a macOS system notification telling the user to re-login."""
+    global _last_auth_notify_at
+    now = time.time()
+    if now - _last_auth_notify_at < AUTH_NOTIFY_COOLDOWN:
+        return  # already notified recently — don't spam
+    _last_auth_notify_at = now
+
+    log("🔔 Sending macOS notification: Bullpen session expired")
+    try:
+        subprocess.run(
+            [
+                "osascript", "-e",
+                'display notification "Run: bullpen login\\nBot is paused until you re-authenticate." '
+                'with title "⚠️ Polymarket Bot — Login Required" '
+                'sound name "Basso"',
+            ],
+            timeout=5,
+            capture_output=True,
+        )
+    except Exception as e:
+        log(f"[WARN] Could not send notification: {e}")
+
+
+def clear_corrupted_credentials():
+    """
+    If credentials are corrupted (not just expired), wipe the bad files so
+    `bullpen login` can start fresh instead of looping on decrypt errors.
+    """
+    bullpen_dir = os.path.expanduser("~/.bullpen")
+    enc_file    = os.path.join(bullpen_dir, "credentials.json.enc")
+    keys_dir    = os.path.join(bullpen_dir, "keys")
+    cleared     = False
+
+    if os.path.exists(enc_file):
+        try:
+            os.remove(enc_file)
+            log("[AUTH] Removed corrupted credentials.json.enc")
+            cleared = True
+        except Exception as e:
+            log(f"[WARN] Could not remove {enc_file}: {e}")
+
+    if os.path.isdir(keys_dir):
+        import shutil
+        try:
+            shutil.rmtree(keys_dir)
+            log("[AUTH] Removed corrupted keys/ directory")
+            cleared = True
+        except Exception as e:
+            log(f"[WARN] Could not remove {keys_dir}: {e}")
+
+    return cleared
+
 
 def load_seen_ids() -> set:
     if os.path.exists(STATE_FILE):
@@ -88,7 +162,8 @@ def fetch_executions() -> list:
         text=True
     )
     if result.returncode != 0:
-        raise RuntimeError(f"bullpen exited {result.returncode}: {result.stderr.strip()}")
+        err = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(f"bullpen exited {result.returncode}: {err}")
 
     raw = json.loads(result.stdout)
 
@@ -352,7 +427,13 @@ def main():
         except json.JSONDecodeError as e:
             log(f"[ERROR] Could not parse bullpen output: {e} — retrying in {POLL_INTERVAL_SECONDS}s")
         except RuntimeError as e:
-            log(f"[ERROR] bullpen CLI error: {e} — retrying in {POLL_INTERVAL_SECONDS}s")
+            err_str = str(e)
+            log(f"[ERROR] bullpen CLI error: {err_str} — retrying in {POLL_INTERVAL_SECONDS}s")
+            if is_auth_error(err_str):
+                if "corrupted" in err_str.lower():
+                    log("[AUTH] Credentials corrupted — clearing bad files for clean re-login")
+                    clear_corrupted_credentials()
+                notify_auth_expired()
         except KeyboardInterrupt:
             log("👋 Bot stopped by user. Goodbye.")
             sys.exit(0)
